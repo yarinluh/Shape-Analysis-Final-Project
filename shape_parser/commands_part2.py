@@ -1,16 +1,16 @@
 from enum import Enum
 from typing import List
-from saav_parser.e_conditions import ECondition
-from saav_parser.or_conditions import ORCondition
-from saav_parser.constants import *
+from shape_parser.e_conditions import ECondition
+from shape_parser.or_conditions import ORCondition
+from shape_parser.constants import *
 
 class CommandType(Enum):
     C_Skip = 1
     C_Assign_Var = 2
-    C_Assign_Const = 3
-    C_Assign_Unknown = 4
-    C_Plus1 = 5
-    C_Minus1 = 6
+    C_Assign_Null = 3
+    C_Assign_To_Next = 4
+    C_Set_Next = 5
+    C_New = 6
     C_Assume = 7
     C_Assert = 8
 
@@ -24,40 +24,26 @@ class Command:
         if self.command_text == ["skip"]:
             return CommandType.C_Skip
         
-        if len(self.command_text) == 3 and \
-            self.command_text[0] in VARIABLE_NAMES and \
-            self.command_text[1] == ASSIGNMENT and \
-            self.command_text[2] in VARIABLE_NAMES:
-            return CommandType.C_Assign_Var
+        if len(self.command_text) == 3 and self.command_text[0] in VARIABLE_NAMES and self.command_text[1] == ASSIGNMENT:
 
-        if len(self.command_text) == 3 and \
-            self.command_text[0] in VARIABLE_NAMES and \
-            self.command_text[1] == ASSIGNMENT and \
-            self.command_text[2].isdigit():
-            return CommandType.C_Assign_Const
-        
-        if len(self.command_text) == 3 and \
-            self.command_text[0] in VARIABLE_NAMES and \
-            self.command_text[1] == ASSIGNMENT and \
-            self.command_text[2] == QUESTION_MARK:
-            return CommandType.C_Assign_Unknown
+            third_word: str = self.command_text[2]
+            if third_word in VARIABLE_NAMES:
+                return CommandType.C_Assign_Var
+            if third_word == NULL:
+                return CommandType.C_Assign_Null
+            if third_word == NEW:
+                return CommandType.C_New
 
-        if len(self.command_text) == 5 and \
-            self.command_text[0] in VARIABLE_NAMES and \
-            self.command_text[1] == ASSIGNMENT and \
-            self.command_text[2] in VARIABLE_NAMES and \
-            self.command_text[3] == PLUS and \
-            self.command_text[4] == ONE_DIGIT:
-            return CommandType.C_Plus1
-        
-        if len(self.command_text) == 5 and \
-            self.command_text[0] in VARIABLE_NAMES and \
-            self.command_text[1] == ASSIGNMENT and \
-            self.command_text[2] in VARIABLE_NAMES and \
-            self.command_text[3] == MINUS and \
-            self.command_text[4] == ONE_DIGIT:
-            return CommandType.C_Minus1
-        
+            third_word_dot_splitted: List[str] = third_word.split('.')
+            if len(third_word_dot_splitted) == 2 and third_word_dot_splitted[0] in VARIABLE_NAMES and third_word_dot_splitted[1] == 'n':
+                return CommandType.C_Assign_To_Next
+
+        if len(self.command_text) == 3 and self.command_text[1] == ASSIGNMENT and self.command_text[2] in VARIABLE_NAMES:
+            first_word_dot_splitted: List[str] = self.command_text[0].split('.')
+            if len(first_word_dot_splitted) == 2 and\
+                first_word_dot_splitted[0] in VARIABLE_NAMES and\
+                first_word_dot_splitted[1] == 'n':
+                return CommandType.C_Set_Next
 
         if self.command_text[0] == "assume":
             try:
@@ -80,23 +66,19 @@ class Command:
             return {}
 
         if self.command_type == CommandType.C_Assign_Var:
-            return {"i": self.command_text[0],
-                    "j": self.command_text[2]}
+            return {"x": self.command_text[0], "y": self.command_text[2]}
 
-        if self.command_type == CommandType.C_Assign_Const:
-            return {"i": self.command_text[0],
-                    "K": int(self.command_text[2])}
+        if self.command_type == CommandType.C_Assign_Null:
+            return {"x": self.command_text[0]}
 
-        if self.command_type == CommandType.C_Assign_Unknown:
-            return {"i": self.command_text[0]}
+        if self.command_type == CommandType.C_Assign_To_Next:
+            return {"x": self.command_text[0], "y": self.command_text[2].split('.')[0]}
 
-        if self.command_type == CommandType.C_Plus1:
-            return {"i": self.command_text[0],
-                    "j": self.command_text[2]}
+        if self.command_type == CommandType.C_Set_Next:
+            return {"x": self.command_text[0].split('.')[0], "y": self.command_text[2]}
 
-        if self.command_type == CommandType.C_Minus1:
-            return {"i": self.command_text[0],
-                    "j": self.command_text[2]}
+        if self.command_type == CommandType.C_New:
+            return {"x": self.command_text[0]}
 
         if self.command_type == CommandType.C_Assume:
             return {"E": ECondition(econdition_text=self.command_text[1:])}
@@ -112,19 +94,19 @@ class Command:
             return 'skip'
 
         if self.command_type == CommandType.C_Assign_Var:
-            return f"{self.command_parameters['i']} {ASSIGNMENT} {self.command_parameters['j']}"
+            return f"{self.command_parameters['x']} {ASSIGNMENT} {self.command_parameters['y']}"
 
-        if self.command_type == CommandType.C_Assign_Const:
-            return f"{self.command_parameters['i']} {ASSIGNMENT} {self.command_parameters['K']}"
+        if self.command_type == CommandType.C_Assign_Null:
+            return f"{self.command_parameters['x']} {ASSIGNMENT} {NULL}"
 
-        if self.command_type == CommandType.C_Assign_Unknown:
-            return f"{self.command_parameters['i']} {ASSIGNMENT} {QUESTION_MARK}"
+        if self.command_type == CommandType.C_Assign_To_Next:
+            return f"{self.command_parameters['x']} {ASSIGNMENT} {self.command_parameters['y']}.n"
 
-        if self.command_type == CommandType.C_Plus1:
-            return f"{self.command_parameters['i']} {ASSIGNMENT} {self.command_parameters['j']} {PLUS} {ONE_DIGIT}"
+        if self.command_type == CommandType.C_Set_Next:
+            return f"{self.command_parameters['x']}.n {ASSIGNMENT} {self.command_parameters['y']}"
 
-        if self.command_type == CommandType.C_Minus1:
-            return f"{self.command_parameters['i']} {ASSIGNMENT} {self.command_parameters['j']} {MINUS} {ONE_DIGIT}"
+        if self.command_type == CommandType.C_New:
+            return f"{self.command_parameters['x']} {ASSIGNMENT} {NEW}"
 
         if self.command_type == CommandType.C_Assume:
             return f"assume {self.command_parameters['E']}"
