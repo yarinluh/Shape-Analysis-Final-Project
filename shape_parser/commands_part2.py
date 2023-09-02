@@ -9,10 +9,11 @@ class CommandType(Enum):
     C_Assign_Var = 2
     C_Assign_Null = 3
     C_Assign_To_Next = 4
-    C_Set_Next = 5
-    C_New = 6
-    C_Assume = 7
-    C_Assert = 8
+    C_Set_Next_To_Var = 5
+    C_Set_Next_To_Null = 6
+    C_New = 7
+    C_Assume = 8
+    C_Assert = 9
 
 class Command:
     def __init__(self, command_text: str):
@@ -38,12 +39,15 @@ class Command:
             if len(third_word_dot_splitted) == 2 and third_word_dot_splitted[0] in VARIABLE_NAMES and third_word_dot_splitted[1] == 'n':
                 return CommandType.C_Assign_To_Next
 
-        if len(self.command_text) == 3 and self.command_text[1] == ASSIGNMENT and self.command_text[2] in VARIABLE_NAMES:
+        if len(self.command_text) == 3 and self.command_text[1] == ASSIGNMENT:
             first_word_dot_splitted: List[str] = self.command_text[0].split('.')
             if len(first_word_dot_splitted) == 2 and\
                 first_word_dot_splitted[0] in VARIABLE_NAMES and\
                 first_word_dot_splitted[1] == 'n':
-                return CommandType.C_Set_Next
+                if self.command_text[2] in VARIABLE_NAMES:
+                    return CommandType.C_Set_Next_To_Var
+                if self.command_text[2] == NULL:
+                    return CommandType.C_Set_Next_To_Null
 
         if self.command_text[0] == "assume":
             try:
@@ -74,8 +78,11 @@ class Command:
         if self.command_type == CommandType.C_Assign_To_Next:
             return {"x": self.command_text[0], "y": self.command_text[2].split('.')[0]}
 
-        if self.command_type == CommandType.C_Set_Next:
+        if self.command_type == CommandType.C_Set_Next_To_Var:
             return {"x": self.command_text[0].split('.')[0], "y": self.command_text[2]}
+        
+        if self.command_type == CommandType.C_Set_Next_To_Null:
+            return {"x": self.command_text[0].split('.')[0]}
 
         if self.command_type == CommandType.C_New:
             return {"x": self.command_text[0]}
@@ -102,8 +109,11 @@ class Command:
         if self.command_type == CommandType.C_Assign_To_Next:
             return f"{self.command_parameters['x']} {ASSIGNMENT} {self.command_parameters['y']}.n"
 
-        if self.command_type == CommandType.C_Set_Next:
+        if self.command_type == CommandType.C_Set_Next_To_Var:
             return f"{self.command_parameters['x']}.n {ASSIGNMENT} {self.command_parameters['y']}"
+        
+        if self.command_type == CommandType.C_Set_Next_To_Null:
+            return f"{self.command_parameters['x']}.n {ASSIGNMENT} {NULL}"
 
         if self.command_type == CommandType.C_New:
             return f"{self.command_parameters['x']} {ASSIGNMENT} {NEW}"

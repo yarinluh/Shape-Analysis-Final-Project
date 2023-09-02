@@ -39,4 +39,4 @@ L52     assert (LS x xx)                                L53
 L53     assert (LS y z)                                 L54
 L54     assert (NOLS x y)                               L55
 L55     assert (t = z.n)                                L56
-L56     assert (ODD x xx EVEN x z) (EVEN x xx ODD x z)  L57
+L56     assert (ODD x xx  EVEN x z) (EVEN x xx  ODD x z)  L57
