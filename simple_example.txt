@@ -1,0 +1,8 @@
+x y
+
+L1  x := new   L2
+L2  y := new   L3
+L3  x.n := NULL  L4 
+L4  x.n := y   L5
+L5  y.n := y   L6
+L6  x := y.n   L7

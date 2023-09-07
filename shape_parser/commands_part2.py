@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import List
-from shape_parser.e_conditions import ECondition
+from xml.dom.minidom import parseString
+from shape_parser.e_conditions import ECondition,EConditionType
 from shape_parser.or_conditions import ORCondition
 from shape_parser.constants import *
 
@@ -20,6 +21,7 @@ class Command:
         self.command_text: List[str] = command_text.split(" ")
         self.command_type: CommandType = self.get_command_type()
         self.command_parameters: dict = self.get_command_parameters()
+        self.focus_formulae : set = self.get_focus_formulae()
 
     def get_command_type(self) -> CommandType:
         if self.command_text == ["skip"]:
@@ -95,6 +97,58 @@ class Command:
         
         raise SyntaxError(f"Ilegal Command: {self.command_text}.")
 
+    def get_focus_formulae(self):
+        type = self.command.command_type 
+        param = self.command_parameters
+
+        if type == CommandType.C_Skip:
+            return {}
+
+        if type == CommandType.C_Assign_Var: 
+            return {param['y_variable']}
+
+        if type == CommandType.C_Assign_Null: 
+            return {param['x_variable']}
+
+        if type == CommandType.C_Assign_To_Next:
+            return {('n',param['y_variable'])}
+
+        if type == CommandType.C_Set_Next_To_Var:
+            return {param['x_variable'],param['y_variable']}
+
+        if type == CommandType.C_Set_Next_To_Null: 
+            return {param['x_variable']}
+
+        if type == CommandType.C_New:
+            return {}
+
+        if type == CommandType.C_Assume:
+            econdition = self.command_parameters['E']
+            type = econdition.econdition_type
+            e_param = econdition.econdition_parameters
+
+            if type == EConditionType.E_True:
+                return {}
+            
+            if type == EConditionType.E_False:
+                return {}
+            
+            if type == EConditionType.E_Equal_Var:
+                return {e_param['i_variable'],e_param['j_variable']}
+            
+            if type == EConditionType.E_Diff_Var:
+                return {e_param['i_variable'],e_param['j_variable']}
+ 
+            if type == EConditionType.E_Equal_Null:
+                return {e_param['i_variable']}
+                
+            if type == EConditionType.E_Diff_Null:
+                return {e_param['i_variable']}
+        
+
+        if type == CommandType.C_Assert:
+            #Currently not focusing on assertions - probably should?
+            return {}
 
     def __repr__(self) -> str:
         if self.command_type == CommandType.C_Skip:
