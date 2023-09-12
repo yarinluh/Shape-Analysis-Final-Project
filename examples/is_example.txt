@@ -1,0 +1,7 @@
+h t s 
+
+L0  t := new  L1
+L1  h := new  L2
+L2  s := new  L3
+L3  t.n := s  L4
+L4  h.n := s  L5

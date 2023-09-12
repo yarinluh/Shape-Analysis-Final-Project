@@ -1,5 +1,18 @@
 from enum import Enum
 from typing import List,Callable
+    
+def cartesian_product(lst, k):
+    #Thanks chatGPT
+    if k == 0:
+        return [[]]
+    if k == 1:
+        return [(x,) for x in lst]
+    result = []
+    smaller_product = cartesian_product(lst, k - 1)
+    for item in lst:
+        for product in smaller_product:
+            result.append((item,) + product)
+    return result
 
 class TwoVal(Enum):
     Zero = 0 
@@ -155,6 +168,30 @@ class Atom(LogicalExpression):
     def __repr__(self):
         return "atomic"+self.logicvar.__repr__()
 
+class Reach(LogicalExpression):
+    #indv2 is reachable from indv1 along 'n' fields
+    def __init__(self,domain,indv1,indv2):
+        self.domain = domain
+        self.indv1 = indv1
+        self.indv2 = indv2
+
+    def handle(self,pred,logic):
+        k = len(self.domain)
+        current_result = logic.Zero
+        for i in range(1,k):
+            formula = FV(lambda pred,ass: And(*[Atom(pred['n'][(ass[i-1],ass[i])]) for i in range(1,i+1)]))
+            possible_assignments = cartesian_product(self.domain,i+1)
+            for ass in possible_assignments:
+                if ass[0] == self.indv1 and ass[i] == self.indv2:
+                    subs = formula.substitute(pred, ass)
+                    res = subs.handle(logic)
+                    current_result = logic.Or([current_result, res])
+        return current_result           
+
+    def __repr__(self):
+        return self.indv2+" is reach. from "+self.indv1+" by 'n' fields "
+
+    
 class FV(LogicalExpression):
     def __init__(self,function: Callable[...,LogicalExpression]):
         self.function = function 
@@ -175,4 +212,19 @@ def example2():
     query = [TwoVal.Zero,TwoVal.One]
     formula = Exists(domain,FV(lambda input: Atom(query[input])))
     print(formula.handle(TwoVal))
-    
+
+def TC_example():
+    one = ThreeVal.One
+    half = ThreeVal.Half
+    zero = ThreeVal.Zero
+
+    domain = {'a','b','c'}
+    keys = cartesian_product(list(domain),2)
+    n_values = {key:zero for key in keys}
+    n_values[('a','b')] = half
+    n_values[('b','c')] = one
+    pred = {'n':n_values}
+
+    reach_que = Reach(domain,'a','c')
+    print(reach_que.handle(pred,ThreeVal))
+

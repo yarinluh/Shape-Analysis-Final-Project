@@ -98,26 +98,26 @@ class Command:
         raise SyntaxError(f"Ilegal Command: {self.command_text}.")
 
     def get_focus_formulae(self):
-        type = self.command.command_type 
+        type = self.command_type 
         param = self.command_parameters
 
         if type == CommandType.C_Skip:
             return {}
 
         if type == CommandType.C_Assign_Var: 
-            return {param['y_variable']}
+            return {param['y']}
 
         if type == CommandType.C_Assign_Null: 
-            return {param['x_variable']}
+            return {param['x']}
 
         if type == CommandType.C_Assign_To_Next:
-            return {('n',param['y_variable'])}
+            return {('n',param['y'])}
 
         if type == CommandType.C_Set_Next_To_Var:
-            return {param['x_variable'],param['y_variable']}
+            return {param['x'],param['y']}
 
         if type == CommandType.C_Set_Next_To_Null: 
-            return {param['x_variable']}
+            return {param['x']}
 
         if type == CommandType.C_New:
             return {}
@@ -134,16 +134,16 @@ class Command:
                 return {}
             
             if type == EConditionType.E_Equal_Var:
-                return {e_param['i_variable'],e_param['j_variable']}
+                return {e_param['i'],e_param['j']}
             
             if type == EConditionType.E_Diff_Var:
-                return {e_param['i_variable'],e_param['j_variable']}
+                return {e_param['i'],e_param['j']}
  
             if type == EConditionType.E_Equal_Null:
-                return {e_param['i_variable']}
+                return {e_param['i']}
                 
             if type == EConditionType.E_Diff_Null:
-                return {e_param['i_variable']}
+                return {e_param['i']}
         
 
         if type == CommandType.C_Assert:

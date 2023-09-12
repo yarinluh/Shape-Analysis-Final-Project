@@ -1,10 +1,8 @@
 from shape_parser import Program,Command,CommandType
 from copy import deepcopy
 from logical_expressions import *
-from transformers import State
 from typing import Set,Optional
-from algorithm import State
-
+from state import State
 
 class Constraint:
     def __init__(self):
@@ -80,16 +78,25 @@ class Type3Constraint(Constraint):
         lhs_result = sub.handle(ThreeVal)
 
         if lhs_result == ThreeVal.One:
+            #print("checkedrighthandside for ",assignment)
             if self.pred_arity == 1:
                 predicate_inputs = (assignment[0])
             else:
                 predicate_inputs = tuple(assignment[:self.pred_arity])
             predicate_value = predicate_values[self.predicate][predicate_inputs]
-            if not(self.b):
-                predicate_value = ThreeVal.Not(predicate_value)
-            if predicate_value == ThreeVal.One:
-                return True
-            return False
+            #print(predicate_value)
+            if self.b == 1:
+                if predicate_value != ThreeVal.One:
+                    return False
+                else:
+                    return True
+            if self.b == 0:
+                if predicate_value != ThreeVal.Zero:
+                    return False
+                else:
+                    return True
+        return True
+            #### AAAAAHHHARGG
     
     def __repr__(self):
         return self.name
@@ -112,9 +119,10 @@ class helper_functions:
         #Definition 4.13 from the paper
 
         individuals = state.individuals
+        instrumentation = state.instrumentation
         pre = state.predicate_values
         cannonical_nodes = set()
-        emp_state = state.empty()
+        emp_state = State.create_empty_state(state.pointers)
         post = emp_state.predicate_values
         mapping = {} #dictionary mapping individuals to cannonical nodes
         
@@ -138,7 +146,19 @@ class helper_functions:
                         or_results.append(pre[pointer][indv])
                 result = ThreeVal.meet(or_results)
                 post[pointer][cannonical_node] = result
-        
+        print(post)
+        #I THINK WE HAVE A BUG HERE
+        print(instrumentation)
+        for sym in instrumentation:
+            if sym!='sm':
+                for cannonical_node in cannonical_nodes:
+                    or_results = []
+                    for indv in individuals:
+                        if mapping[indv] == cannonical_node:
+                            or_results.append(pre[sym][indv])
+                    result = ThreeVal.meet(or_results)
+                    post[sym][cannonical_node] = result
+
         for cannonical_node in cannonical_nodes:
             preimage = []
             for indv in individuals:
@@ -223,7 +243,6 @@ class helper_functions:
         return answerset           
 
     def focus_var_deref(state,pointer,sel = 'n'):
-        print(type(state))
         assert state.logic == ThreeVal
         workset = helper_functions.focus_var(state,pointer)
         answerset = set()
@@ -264,11 +283,12 @@ class helper_functions:
     def expand(state : State,u,u0,u1):
         individuals = state.individuals
         pre = state.predicate_values
+        instrumentation = state.instrumentation
         new_individuals = individuals.copy()
         new_individuals.remove(u)
         new_individuals.add(u0)
         new_individuals.add(u1)
-        empty_state = state.empty()
+        empty_state = State.create_empty_state(state.pointers)
         post = empty_state.predicate_values
         """updates to post need to be done in a clever way - this is not going to be full, currently missing instrumentation - and this should be more modular, the same problem appears in malloc"""
         m = lambda w: u if w == u0 or w == u1 else w
@@ -279,8 +299,9 @@ class helper_functions:
         for indv1 in new_individuals:
             for indv2 in new_individuals:
                 post['n'][(indv1,indv2)] = pre['n'][(m(indv1),m(indv2))]    
-        for indv in new_individuals:
-            post['sm'][(indv)] = pre['sm'][(m(indv))]
+        for sym in instrumentation:
+            for indv in new_individuals:
+                post[sym][(indv)] = pre[sym][(m(indv))]
 
         return state.change_indvs_or_values(new_individuals,post)
 
@@ -298,6 +319,7 @@ class helper_functions:
                 if const.check(workstate,assignment) == False:
                     #print("\nfailed constraint: ",const,"on state: ",workstate,"\nand assignment: ",assignment)
                     if const.type == 1:
+                        #print("constraint",const,"gave bot")
                         return None
                     if const.type == 2:
                         if const.b == 1 and (assignment[0] == assignment[1]) and (pre['sm'][assignment[0]] == ThreeVal.Half):
@@ -306,6 +328,7 @@ class helper_functions:
                             new_state = workstate.change_indvs_or_values(workstate.individuals,post)
                             workstate = new_state
                         else: 
+                            #print("constraint",const,"gave bot")
                             return None
                     if const.type == 3:
                         predic = const.predicate
@@ -320,10 +343,55 @@ class helper_functions:
                             new_state = workstate.change_indvs_or_values(workstate.individuals,post)
                             workstate = new_state
                         else: 
+                            #print("constraint",const,"gave bot")
                             return None
                     #print("\ncoerced state:")
                     #print(workstate)
         return workstate
+    
+    def create_constraints(pointers):
+        #HERE WE NEED TO ADD INSTRUMENTATION
+        constraint_set = set()
+
+        const39_lhs = FV(lambda pre,ass,domain: Exists(domain,FV(lambda v: Atom(pre['sm'][v]))))
+        constraint39 = Type1Constraint('no node has sm=1',0,const39_lhs)
+        constraint_set.add(constraint39)
+
+        const41_lhs = FV(lambda pre,ass,domain: Exists(domain,FV(lambda v3:And(Atom(pre['n'][(v3,ass[0])]),Atom(pre['n'][(v3,ass[1])])))))
+        constraint41 = Type2Constraint('n field points to one node - case 1',2,const41_lhs,1)
+        constraint_set.add(constraint41)
+
+        const48_lhs = FV(lambda pre,ass,domain: Exists(domain,FV(lambda v1:And(Atom(pre['n'][(ass[0],v1)]),Atom(ThreeVal.frombool(v1!=ass[1]))))))
+        constraint48 = Type3Constraint('n field points to one node - case 2',2,const48_lhs,'n',2,0)
+        constraint_set.add(constraint48)
+
+        for pointer in pointers:
+            const40_lhs = FV(lambda pre,ass,domain: And(Atom(pre[pointer][ass[0]]),Atom(pre[pointer][ass[1]])))
+            constraint40 = Type2Constraint("pointer: "+pointer+" points to one node - case 1",2,const40_lhs,1)
+            constraint_set.add(constraint40)
+
+            """
+            const46_lhs = FV(lambda pre,ass,domain: Exists(domain,FV(lambda v1: And(Atom(pre[pointer][v1]),Atom(ThreeVal.frombool(v1!=ass[0]))))))
+            constraint46 = Type3Constraint("pointer: "+pointer+" points to one node - case 2",1,const46_lhs,pointer,1,0)
+            constraint_set.add(constraint46)
+            """
+            #THIS SHOULD BE ADDED BACK BUT IT CAUSES SOME ERROR I DONT UNDERSTAND
+        
+        const27_lhs = FV(lambda pre,ass,domain:
+                        Exists(domain,FV(lambda v1: 
+                        Exists(domain,FV(lambda v2:
+                        And(   Atom(pre['n'][(v2,ass[0])]),   Atom(pre['n'][(v1,ass[0])])   ,Atom(ThreeVal.frombool(v1!=v2))  ))))))
+        const27 = Type3Constraint('is meaning case 1',1,const27_lhs,'is',1,1)
+        constraint_set.add(const27)
+
+        const28_lhs = FV(lambda pre,ass,domain:
+                Not(Exists(domain,FV(lambda v1: 
+                Exists(domain,FV(lambda v2:
+                And(   Atom(pre['n'][(v2,ass[0])]),   Atom(pre['n'][(v1,ass[0])])   ,Atom(ThreeVal.frombool(v1!=v2))  )))))))
+        const28 = Type3Constraint('is meaning case 2',1,const28_lhs,'is',1,0)
+        constraint_set.add(const28)
+
+        return constraint_set
 
 class examples:
     def focus_example():
@@ -341,7 +409,7 @@ class examples:
         predicate_values = {'x':{('u1'): ThreeVal.One,('u'):ThreeVal.Zero},'y':{('u1'):ThreeVal.One,('u'):ThreeVal.Zero},'sm':{('u1'): ThreeVal.Zero,('u'): ThreeVal.Half}, 
         'n': {('u1','u1'):ThreeVal.Zero, ('u1','u'):ThreeVal.Half, ('u','u1'):ThreeVal.Zero, ('u','u'):ThreeVal.Half}}
         s = State(pointers,{},individuals,predicate_values,ThreeVal)
-        print(helper_functions.focus_var_deref(s,'x'))
+        print(helper_functions.focus(s,{'x',('n','y')}))
 
     def constraint_example():
         pointers = {'x','y'}
@@ -452,5 +520,27 @@ class examples:
         s1 = helper_functions.focus(s,focus_formulae)
         print(s1)
 
-examples.focus_parse()
+    def another_focus_example():
+            #from page 61 - table XV
+        one = ThreeVal.One
+        zero = ThreeVal.Zero
+        half = ThreeVal.Half
 
+        pointers = {'x','y'}
+        individuals = {'u0','u1'}
+        predicate_values = {
+            'x':{'u0':one,'u1':zero},
+            'y':{'u0':one,'u1':zero},
+            'n':{('u0','u0'):zero,('u0','u1'):half,('u1','u0'):zero,('u1','u1'):half},
+            'sm':{'u0':zero,'u1':one}
+        }
+        s = State(pointers,{},individuals,predicate_values,ThreeVal)
+        set_of_states = {}
+        command = Command('y := y.n')
+        focused = helper_functions.focus(s,{'y',('n','y')})
+
+        #focused_state = helper_functions.focus_var(s,'y')
+        #focused_state2 = helper_functions.focus_var_deref(focused_state,'n')
+        print(focused)
+
+#examples.focus_deref_example()
