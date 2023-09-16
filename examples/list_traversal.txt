@@ -12,4 +12,5 @@ L5  h := s    L2
 L6  s := h   L7
 L7  assume s != t  L8
 L8  assert (s != NULL)  L9
-L9  s := s.n  L7
+L9  assert (LS h s)   L10
+L10 s := s.n  L7

@@ -2,6 +2,8 @@ from time import time
 from logical_expressions import *
 import json
 
+include_odd_even = True #Toggle even-odd instrumentation
+
 class State:
     def __init__(self,pointers={},instrumentation={},individuals={},predicate_values={},logic=TwoVal):
         #predicate_values is a dictionary that maps each predicate to a a dictionary of mapping lists of individuals to a booelean/3-valued value
@@ -67,8 +69,9 @@ class State:
         instrumentation_set = {'is','c','sm'}
         for pointer in set_of_pointers:
             instrumentation_set.add('r-'+pointer)
-            #instrumentation_set.add('r-even-'+pointer)
-            #instrumentation_set.add('r-odd-'+pointer)
+            if include_odd_even:
+                instrumentation_set.add('r-even-'+pointer)
+                instrumentation_set.add('r-odd-'+pointer)
         predicate_values = {}
         for pointer in set_of_pointers:
             predicate_values[pointer]={}
