@@ -1,0 +1,16 @@
+h t s 
+
+L0  t := new  L1
+L1  h := t    L2
+L2  assume TRUE  L3
+L2  assume TRUE  L6
+
+L3  s := new   L4
+L4  s.n := h   L5
+L5  h := s    L2
+
+L6  s := h   L7
+L7  assume s != t  L8
+L8  assert (s != NULL)  L9
+L9  assert (ODD h s  ODD s t  EVEN h t)(EVEN h s  EVEN s t  EVEN h t)(EVEN h s  ODD s t  ODD h t)(ODD h s  EVEN s t  ODD h t)  L10
+L10  s := s.n  L7

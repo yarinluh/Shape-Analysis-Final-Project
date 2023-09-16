@@ -10,7 +10,7 @@ class ProgramLine:
         end_label = splitted_line[-1]
         if start_label[0] != "L" or not start_label[1:].isdigit() or \
              end_label[0] != "L" or not end_label[1:].isdigit():
-            raise SyntaxError(f"Line does not start or ends with a labal: {line_text}.")
+            raise SyntaxError(f"Line does not start or ends with a label: {line_text}.")
         self.start_label: int = int(start_label[1:])
         self.end_label: int = int(end_label[1:])
 

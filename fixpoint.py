@@ -5,9 +5,10 @@ from state import State
 
 def chaotic_iteration(cfg,pointers):
     nodes = cfg.nodes
-    states_vector = [{} for _ in nodes] #Bottom is poor - maybe just have an empty structure as well
+    states_dictionary  = {n: set() for n in nodes}
     start_node = cfg.find_start_label()
-    states_vector[start_node] = {State.create_empty_state(pointers)}
+    print('start node',start_node)
+    states_dictionary[start_node] = {State.create_empty_state(pointers)}
     worklist = set(nodes)
     iteration = 0
     start_time = time()
@@ -16,16 +17,17 @@ def chaotic_iteration(cfg,pointers):
         print(f"\nIteration #{iteration} (started after {int(time()-start_time)} seconds).")
         print(f"Current worklist: {worklist}.")
         node = worklist.pop()
-        new_vector = update_node_state(cfg, states_vector, node)
-        if new_vector != states_vector: 
+        new_dictionary = update_node_state(cfg, states_dictionary, node)
+        if new_dictionary != states_dictionary: 
             dependencies = create_dependencies_of_node(cfg,node)
             worklist=worklist.union(dependencies)
-        states_vector = new_vector
+        states_dictionary = new_dictionary
         iteration = iteration + 1
-    return states_vector
+    print(f"\nFinished after {int(time()-start_time)} seconds.\n")
+    return states_dictionary
                 
-def update_node_state(cfg, states_vector, node):
-    new_vector = states_vector.copy()
+def update_node_state(cfg, states_dictionary, node):
+    new_dictionary = states_dictionary.copy()
     ingoing_edges = cfg.ingoing_edges(node)
     if ingoing_edges:
         ingoing_states = []
@@ -33,21 +35,23 @@ def update_node_state(cfg, states_vector, node):
             print("\n",line)
             start = line.start_label
 
-            print("\n",start,states_vector[start])
-            new_state = set_transformers.abstract_transformer(states_vector[start], line.command, ThreeVal)
+            print("\n",start,len(states_dictionary[start]))
+            #draw_set_of_states(states_dictionary[start],'location '+str(start))
+
+            new_state = set_transformers.abstract_transformer(new_dictionary[start], line.command)
             
-            print("\n",node,new_state)
+            #print("\n",node,new_state)
             ingoing_states.append(new_state)
             
-
         new_state_for_node = union(ingoing_states)
         if len(ingoing_edges) > 1:
             #print("\n","join_result for",node,new_state_for_node)
             pass
-        new_vector[node] = new_state_for_node
+        new_dictionary[node] = new_state_for_node
         #print('location'+str(node),new_state_for_node)
         #draw_set_of_states(new_state_for_node,'location:'+str(node))
-    return new_vector
+
+    return new_dictionary
 
 def create_dependencies_of_node(cfg,node):
     result = set()

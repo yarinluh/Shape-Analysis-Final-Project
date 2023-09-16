@@ -6,16 +6,25 @@ from helper_functions import helper_functions
 from state import State
 from state_visualisation import *
 
-# TODO : 
-# instrumentation predicates - which ones we want and how to implement them - add them to coerce? write the compatibility constraints for them.
-# fix bug in coerce - pointers - case 2
-# finish 'is' instrumentation, and add the rest of the instrumentation, add compatibility constraints for 'is'
-# create the signature from the program code    
+# TODO:
+# add some optimizations - for example, assert shouldn't do focus/coerce/.., assume TRUE shouldnt do anything.
+# it seems that the bottleneck is coerce - and specifically, the Reach check - the change I made from k to k+1 increased the running time by a lot 
+# and this change is only relevant for cycle checks, so we should change accordingly.
+# but actually the best way to fix this is just to implement the reachability check with a DFS style algo.
+
+class errors:
+    null_pointer = False
+    assertion_fail = False
+    cycle_detected = False
+    more_than_1_heap_shared = False
+
+    def results():
+        print("assertion fail error:",errors.assertion_fail)
+        print("null pointer error:",errors.null_pointer)
+        print("cycle detected error:",errors.cycle_detected)
+        print("more than 1 heap shared error:",errors.more_than_1_heap_shared)
 
 class state_transformers:  
-    #missing instrumentation updates for even,odd
-    # BUG when updating r-x for x.n=y and x = y.n
-
     def evaluate_transformer_on_state(state:State,command:Command,logic):
         type = command.command_type 
 
@@ -37,19 +46,41 @@ class state_transformers:
             ry = 'r-'+y_variable
             for indv in individuals:
                 post[rx][indv] = pre[ry][indv]
+            
+            #updates to odd,even
+            if include_odd_even:
+                rxodd = 'r-odd-'+x_variable
+                ryodd = 'r-odd-'+y_variable
+                rxeven = 'r-even-'+x_variable
+                ryeven = 'r-even-'+y_variable
+                for indv in individuals:
+                    post[rxodd][indv] = pre[ryodd][indv]
+                    post[rxeven][indv] = pre[ryeven][indv]
+
             return state.change_indvs_or_values(individuals,post)
         
         if type == CommandType.C_Assign_Null: 
             x_variable = command.command_parameters['x']            
             individuals = state.individuals.copy()
-            post = deepcopy(state.pre)
+            pre = state.predicate_values
+            post = deepcopy(pre)
             for indv in individuals:
                 post[x_variable][(indv)] = logic.Zero
             #updates to r and c
             rx = 'r-'+x_variable
-            ry = 'r-'+y_variable
             for indv in individuals:
                 post[rx][indv] = logic.Zero
+
+            #updates to odd,even
+            if include_odd_even:
+                rxodd = 'r-odd-'+x_variable
+                ryodd = 'r-odd-'+y_variable
+                rxeven = 'r-even-'+x_variable
+                ryeven = 'r-even-'+y_variable
+                for indv in individuals:
+                    post[rxodd][indv] = 0
+                    post[rxeven][indv] = 0
+            
             return state.change_indvs_or_values(individuals,post)
         
         if type == CommandType.C_Assign_To_Next:
@@ -67,8 +98,28 @@ class state_transformers:
             ry = 'r-'+y_variable
             for indv in individuals:
                 post[rx][indv] = logic.And([pre[ry][indv],logic.Or([pre['c'][indv],logic.Not(pre[y_variable][indv])])])
-            return state.change_indvs_or_values(individuals,post)
+            
+            #updates to odd,even
+            if include_odd_even:
+                rxodd = 'r-odd-'+x_variable
+                ryodd = 'r-odd-'+y_variable
+                rxeven = 'r-even-'+x_variable
+                ryeven = 'r-even-'+y_variable
+                for indv in individuals:
+                    post[rxodd][indv] = pre[ryeven][indv]
+                    post[rxeven][indv] = logic.And([pre[ryodd][indv],logic.Or([pre['c'][indv],logic.Not(pre[y_variable][indv])])])
 
+            #check_null_pointer
+            check_condition = Exists(individuals,FV(lambda v1: Exists(individuals,FV(lambda v2:
+                            And(Atom(pre[y_variable][v1]),Atom(pre['n'][(v1,v2)]))))))
+            res = check_condition.handle(logic)
+            if res != logic.One:
+                print("possible null pointer error on state",state)
+                errors.null_pointer = True
+
+            return state.change_indvs_or_values(individuals,post)
+        
+            
         if type == CommandType.C_Set_Next_To_Var:
             #Assuming the previous command was set_next_to_null as in the paper/instructions
             individuals = state.individuals.copy()
@@ -110,7 +161,28 @@ class state_transformers:
                 part1 = pre['c'][indv]
                 part2 = Exists(individuals,FV(lambda u: 
                         And(Atom(pre[x_variable][u]),Atom(pre[ry][u]),Atom(pre[ry][indv]))))
-                post[rz][indv] = logic.Or([part1,part2.handle(logic)])
+                post['c'][indv] = logic.Or([part1,part2.handle(logic)])
+
+            #updates to odd,even
+            if include_odd_even:
+                ryodd = 'r-odd-'+y_variable
+                ryeven = 'r-even-'+y_variable
+                for pointer in pointers:
+                    rzodd = 'r-odd-'+pointer
+                    rzeven = 'r-even-'+pointer
+                    for indv in individuals:
+                        cond_odd = Or(Atom(pre[rzodd][indv]),Exists(individuals,FV(lambda u:
+                                And(Atom(pre[x_variable][u]),Or(
+                                    And(Atom(pre[rzeven][u]),Atom(pre[ryodd][indv])),
+                                    And(Atom(pre[rzodd][u]),Atom(pre[ryeven][indv]))
+                                )))))
+                        post[rzodd][indv] = cond_odd.handle(logic)
+                        cond_even = Or(Atom(pre[rzeven][indv]),Exists(individuals,FV(lambda u:
+                                And(Atom(pre[x_variable][u]),Or(
+                                    And(Atom(pre[rzeven][u]),Atom(pre[ryeven][indv])),
+                                    And(Atom(pre[rzodd][u]),Atom(pre[ryodd][indv]))
+                                )))))
+                        post[rzeven][indv] = cond_even.handle(logic)
 
             return state.change_indvs_or_values(individuals,post)
             
@@ -138,29 +210,47 @@ class state_transformers:
                     res = subs.handle(logic)
                     post['is'][indv] = logic.And([pre['is'][indv],res])
             
-            #updates to r and c
+            #updates to r and c, including updates to odd,even
             rx = 'r-'+x_variable
             exact_formula = FV(lambda v: Or(
             Atom(post[x_variable][v]),
-            Exists(individuals,FV(lambda v1: Reach(individuals,v1,v)))))
-            
+            Exists(individuals,FV(lambda v1: Reach(post['n'],individuals,v1,v)))))
+            exact_formula_odd = FV(lambda v: Or(
+            Atom(post[x_variable][v]),
+            Exists(individuals,FV(lambda v1: ReachOdd(post['n'],individuals,v1,v)))))
+            exact_formula_even = FV(lambda v: Or(
+            Atom(post[x_variable][v]),
+            Exists(individuals,FV(lambda v1: ReachEven(post['n'],individuals,v1,v)))))
+
             for pointer in pointers:
                 rz = 'r-'+pointer
+                rzodd = 'r-odd-'+pointer
+                rzeven = 'r-even'+pointer
                 if pointer == x_variable:
                     for indv in individuals:
-                        post[rx][indv] = post[x_variable][indv]
+                        post[rz][indv] = post[x_variable][indv]
+                        if include_odd_even:
+                            post[rzodd][indv] = post[x_variable][indv] #ODD
+                            post[rzeven][indv] = 0 #EVEN
                 else:
                     for indv in individuals:
+                        subs = exact_formula.substitute(indv)
                         condition = logic.And([pre['c'][indv],pre[rx][indv]])
-                        if condition != logic.Zero:
+                        if condition != logic.Zero: #THIS SHOULD JUST BE UNREACHABLE DUE TO ASSUMPTION - SO ACTUALLY MIGHT BE BUGGED AS WELL
                             subs = exact_formula.substitute(indv)
-                            result = subs.handle(logic)
+                            post[rz][indv] = subs.handle(logic)
+                            if include_odd_even:
+                                subs_odd = exact_formula_odd.substitute(indv)
+                                post[rzodd][indv] = subs_odd.handle(logic)
+                                subs_even = exact_formula_even.substitute(indv)
+                                post[rzeven][indv] = subs_even.handle(logic)
                         else:
-                            part1 = pre[rz][indv]
-                            part2 = Not(Exists(individuals, FV(lambda u:
+                            unaffected = Not(Exists(individuals, FV(lambda u:
                                        And(Atom(pre[rz][u]),Atom(pre[x_variable][u]),Atom(pre[rx][indv]),Not(Atom(pre[x_variable][indv]))))))
-                            result = logic.And([part1,part2.handle(logic)])
-                            post[rz][indv] = result
+                            post[rz][indv] = logic.And([pre[rz][indv],unaffected.handle(logic)])
+                            if include_odd_even:
+                                post[rzodd][indv] = logic.And([pre[rzodd][indv],unaffected.handle(logic)])
+                                post[rzeven][indv] = logic.And([pre[rzeven][indv],unaffected.handle(logic)])
 
             for indv in individuals:
                 part2 = Not(Exists(individuals,FV(lambda u:
@@ -190,17 +280,33 @@ class state_transformers:
                         post['n'][(indv1,indv2)] = logic.frombool(False)
 
             for indv in new_individuals:
-                if indv == new_individual:
-                    post['sm'][indv] = logic.frombool(False)
-                    post['is'][indv] = logic.frombool(False)
-                    post['c'][indv] = logic.frombool(False)
-                    for pointer in pointers:
-                        rz = 'r-'+pointer
-                        if pointer == x_variable:
-                            post[rz][indv] = logic.frombool(True)
-                        else:
-                            post[rz][indv] = logic.frombool(False)
-             
+                if indv != new_individual:
+                    post[x_variable][indv] = logic.frombool(False)
+                    post['r-'+x_variable][indv] = logic.frombool(False)
+                    if include_odd_even:
+                        post['r-even-'+x_variable][indv] = logic.frombool(False)
+                        post['r-odd-'+x_variable][indv] = logic.frombool(False)
+
+            post['sm'][new_individual] = logic.frombool(False)
+            post['is'][new_individual] = logic.frombool(False)
+            post['c'][new_individual] = logic.frombool(False)
+            
+            for pointer in pointers:
+                rz = 'r-'+pointer
+                revenz = 'r-even-'+pointer
+                roddz = 'r-odd-'+pointer
+                
+                if pointer == x_variable:
+                    post[rz][new_individual] = logic.frombool(True)
+                    if include_odd_even:
+                        post[roddz][new_individual] = logic.frombool(True)
+                        post[revenz][new_individual] = logic.frombool(False)
+                else:
+                    post[rz][new_individual] = logic.frombool(False)
+                    if include_odd_even:
+                        post[roddz][new_individual] = logic.frombool(False)
+                        post[revenz][new_individual] = logic.frombool(False) 
+
             return state.change_indvs_or_values(new_individuals,post)
 
         #The following two commands shouldn't reach this as they have different treatment:
@@ -377,34 +483,94 @@ class state_transformers:
             result = check_condition.handle(logic)
             return result
 
-        """YET TO BE IMPLEMENTED - NEEDS INSTRUMENTATION"""
         if type == BoolConditionType.B_LIST:
-            pass
+            x_variable = cond.boolcondition_parameters['x']
+            y_variable = cond.boolcondition_parameters['y']
+            domain = state.individuals
+            pre = state.predicate_values
+            check_condition = Exists(domain,FV(lambda v: 
+                And(Atom(pre[y_variable][v]),Atom(pre['r-'+x_variable][v]))))
+            result = check_condition.handle(logic)
+            return result
 
         if type == BoolConditionType.B_NOT_LIST:
-            pass
-
+            x_variable = cond.boolcondition_parameters['x']
+            y_variable = cond.boolcondition_parameters['y']
+            domain = state.individuals
+            pre = state.predicate_values
+            check_condition = Not(Exists(domain,FV(lambda v: 
+                And(Atom(pre[y_variable][v]),Atom(pre['r-'+x_variable][v])))))
+            result = check_condition.handle(logic)
+            return result
+        
         if type == BoolConditionType.B_ODD_LIST:
-            pass
+            x_variable = cond.boolcondition_parameters['x']
+            y_variable = cond.boolcondition_parameters['y']
+            domain = state.individuals
+            pre = state.predicate_values
+            check_condition = Exists(domain,FV(lambda v: 
+                And(Atom(pre[y_variable][v]),Atom(pre['r-odd-'+x_variable][v]))))
+            result = check_condition.handle(logic)
+            return result
 
         if type == BoolConditionType.B_EVEN_LIST:
-            pass
+            x_variable = cond.boolcondition_parameters['x']
+            y_variable = cond.boolcondition_parameters['y']
+            domain = state.individuals
+            pre = state.predicate_values
+            check_condition = Exists(domain,FV(lambda v: 
+                And(Atom(pre[y_variable][v]),Atom(pre['r-even-'+x_variable][v]))))
+            result = check_condition.handle(logic)
+            return result
+    
+    def check_cycles(state,logic):
+        individuals = state.individuals
+        pre = state.predicate_values
+        check_condition = Exists(individuals,FV(lambda v: Atom(pre['c'][v])))
+        res = check_condition.handle(logic)
+        if res != logic.Zero:
+            print("possible cycle detected in state",state)
+            errors.cycle_detected = True
+
+    def check_heap_shared(state,logic):
+        individuals = state.individuals
+        pre = state.predicate_values
+        check_condition = Exists(individuals,FV(lambda v1: Exists(individuals,FV(lambda v2: And(Atom(pre['is'][v1]),Atom(pre['is'][v2]),Atom(logic.frombool(v1!=v2)))))))
+        res = check_condition.handle(logic)
+        if res != logic.Zero:
+            print("possible more than 1 heap shared node in state",state)
+            errors.more_than_1_heap_shared = True
+
 
 class set_transformers:
 
-    def abstract_transformer(set_of_states: Set[State], command: Command, logic):
-        #focus -> coerce -> [st]_3 -> coerce -> t_embed
-        print("\nstart","size: ",len(set_of_states),set_of_states)
+    def abstract_transformer(set_of_states: Set[State], command: Command):
+        
+        #focus -> coerce -> [st]_3 -> coerce -> t_embed -> check_for_errors
+        
         focus_result = set_transformers.focus_set(set_of_states,command)
-        print("\nforcus result","size: ",len(focus_result),focus_result)
-        #coerce1_result = set_transformers.coerce_set(focus_result) #MAYBE ADD ANOTHER COERCE IN THE MIDDLE LIKE THEY SUGGESTED
-        #print("\ncoerce1 result","size: ",len(coerce1_result),coerce1_result)
-        transformer_result = set_transformers.evaluate_transformer_on_set(focus_result,command,ThreeVal)
-        #draw_set_of_states(transformer_result)
-        print("\ntransformer result","size: ",len(transformer_result),transformer_result)
+        coerce1_result = set_transformers.coerce_set(focus_result) #second coerce as suggested in the paper
+        transformer_result = set_transformers.evaluate_transformer_on_set(coerce1_result,command,ThreeVal)
         coerce2_result = set_transformers.coerce_set(transformer_result)
-        print("\ncoerce2 result","size: ",len(coerce2_result),coerce2_result)
         embed_result = set_transformers.cannonical_embed_set(coerce2_result)
+        set_transformers.check_errors(embed_result)
+
+        #draw_set_of_states(transformer_result,'after trans.')
+
+        """
+        draw_set_of_states(set_of_states,'start')
+        draw_set_of_states(focus_result,'after focus')
+        draw_set_of_states(transformer_result,'after trans.')
+        draw_set_of_states(coerce2_result,'after coerce')
+        draw_set_of_states(embed_result,'after embed')
+        
+        print("\nstart","size: ",len(set_of_states),set_of_states)
+        print("\nforcus result","size: ",len(focus_result),focus_result)
+        print("\ntransformer result","size: ",len(transformer_result),transformer_result)
+        print("\ncoerce2 result","size: ",len(coerce2_result),coerce2_result)
+        print("\nembed result","size: ",len(embed_result),embed_result)        
+        """
+
         return embed_result
 
     def focus_set(set_of_states : Set[State], command: Command):
@@ -429,8 +595,11 @@ class set_transformers:
     def cannonical_embed_set(set_of_states: Set[State]):
         outset = set()
         for state in set_of_states:
-            print(state.pointers)
-            embed_result = helper_functions.cannonical_embedding(state,state.pointers)
+            #print(state.pointers)
+            abs_predicates = state.pointers.copy()
+            abs_predicates.update(state.instrumentation) #probably not useful
+            abs_predicates.remove('sm')
+            embed_result = helper_functions.cannonical_embedding(state,abs_predicates)
             outset.add(embed_result)
         return outset
 
@@ -449,9 +618,15 @@ class set_transformers:
                 assert_result = state_transformers.evaluate_assert_on_state(state,assert_orc,ThreeVal)
                 if assert_result == False:
                     print("assert: ",assert_orc,"may be violated by state: ",state)
+                    errors.assertion_fail = True
                 else:
                     outset.add(state)
             return outset
+        
+    def check_errors(set_of_states):
+        for state in set_of_states:
+            state_transformers.check_cycles(state,ThreeVal)
+            state_transformers.check_heap_shared(state,ThreeVal)
     
 def econditions_example():
     pointers = {'x','y'}

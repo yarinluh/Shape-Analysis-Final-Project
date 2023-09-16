@@ -1,7 +1,10 @@
-h t s 
+h t s q
 
 L0  t := new  L1
 L1  h := new  L2
 L2  s := new  L3
 L3  t.n := s  L4
 L4  h.n := s  L5
+L5  s.n := t  L6
+L6  q := new  L7
+L7  q.n := t  L8

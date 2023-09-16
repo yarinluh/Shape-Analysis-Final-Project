@@ -78,7 +78,7 @@ class Type3Constraint(Constraint):
         lhs_result = sub.handle(ThreeVal)
 
         if lhs_result == ThreeVal.One:
-            #print("checkedrighthandside for ",assignment)
+            #print('checking rhs',self)
             if self.pred_arity == 1:
                 predicate_inputs = (assignment[0])
             else:
@@ -131,9 +131,9 @@ class helper_functions:
             zero_set = ""
             for pred in predicates:
                 if pre[pred][indv] == ThreeVal.One:
-                    one_set = one_set + pred
+                    one_set = one_set + " "+ pred
                 if pre[pred][indv] == ThreeVal.Zero:
-                    zero_set = zero_set + pred
+                    zero_set = zero_set+ " "+ pred
             new_node = "("+one_set+","+zero_set+")"
             cannonical_nodes.add(new_node)
             mapping[indv] = new_node
@@ -146,9 +146,7 @@ class helper_functions:
                         or_results.append(pre[pointer][indv])
                 result = ThreeVal.meet(or_results)
                 post[pointer][cannonical_node] = result
-        print(post)
-        #I THINK WE HAVE A BUG HERE
-        print(instrumentation)
+
         for sym in instrumentation:
             if sym!='sm':
                 for cannonical_node in cannonical_nodes:
@@ -306,10 +304,8 @@ class helper_functions:
         return state.change_indvs_or_values(new_individuals,post)
 
     def coerce(state :State ,constraints: Set[Constraint]) -> Optional[State] :
-        #Maybe pass on this or only do a partial implementation
         workstate = state
         individuals = state.individuals
-        """UNTESTED"""
         while(constraints):
             const = constraints.pop()
             const_arity = const.arity
@@ -319,7 +315,7 @@ class helper_functions:
                 if const.check(workstate,assignment) == False:
                     #print("\nfailed constraint: ",const,"on state: ",workstate,"\nand assignment: ",assignment)
                     if const.type == 1:
-                        #print("constraint",const,"gave bot")
+                        #print("constraint",const,"gave bot on",workstate,assignment)
                         return None
                     if const.type == 2:
                         if const.b == 1 and (assignment[0] == assignment[1]) and (pre['sm'][assignment[0]] == ThreeVal.Half):
@@ -328,7 +324,7 @@ class helper_functions:
                             new_state = workstate.change_indvs_or_values(workstate.individuals,post)
                             workstate = new_state
                         else: 
-                            #print("constraint",const,"gave bot")
+                            #print("constraint",const,"gave bot on",workstate,assignment)
                             return None
                     if const.type == 3:
                         predic = const.predicate
@@ -339,11 +335,11 @@ class helper_functions:
                         predicate_value = pre[predic][predicate_inputs]
                         if predicate_value == ThreeVal.Half:
                             post = deepcopy(pre)
-                            post[predic][predicate_inputs] = const.b
+                            post[predic][predicate_inputs] = ThreeVal.frombool(const.b) #BUG
                             new_state = workstate.change_indvs_or_values(workstate.individuals,post)
                             workstate = new_state
                         else: 
-                            #print("constraint",const,"gave bot")
+                            #print("constraint",const,"gave bot on",workstate,assignment)
                             return None
                     #print("\ncoerced state:")
                     #print(workstate)
@@ -366,17 +362,15 @@ class helper_functions:
         constraint_set.add(constraint48)
 
         for pointer in pointers:
-            const40_lhs = FV(lambda pre,ass,domain: And(Atom(pre[pointer][ass[0]]),Atom(pre[pointer][ass[1]])))
+            const40_lhs = FV(lambda pre,ass,domain,pointer=pointer: And(Atom(pre[pointer][ass[0]]),Atom(pre[pointer][ass[1]])))
             constraint40 = Type2Constraint("pointer: "+pointer+" points to one node - case 1",2,const40_lhs,1)
             constraint_set.add(constraint40)
-
-            """
-            const46_lhs = FV(lambda pre,ass,domain: Exists(domain,FV(lambda v1: And(Atom(pre[pointer][v1]),Atom(ThreeVal.frombool(v1!=ass[0]))))))
+            
+            const46_lhs = FV(lambda pre,ass,domain,pointer=pointer: Exists(domain,FV(lambda v1: And(Atom(pre[pointer][v1]),Atom(ThreeVal.frombool(v1!=ass[0]))))))
             constraint46 = Type3Constraint("pointer: "+pointer+" points to one node - case 2",1,const46_lhs,pointer,1,0)
             constraint_set.add(constraint46)
-            """
-            #THIS SHOULD BE ADDED BACK BUT IT CAUSES SOME ERROR I DONT UNDERSTAND
-        
+            #fixed the bug here
+               
         const27_lhs = FV(lambda pre,ass,domain:
                         Exists(domain,FV(lambda v1: 
                         Exists(domain,FV(lambda v2:
@@ -390,6 +384,30 @@ class helper_functions:
                 And(   Atom(pre['n'][(v2,ass[0])]),   Atom(pre['n'][(v1,ass[0])])   ,Atom(ThreeVal.frombool(v1!=v2))  )))))))
         const28 = Type3Constraint('is meaning case 2',1,const28_lhs,'is',1,0)
         constraint_set.add(const28)
+
+        const29_lhs = FV(lambda pre,ass,domain:
+                Reach(pre['n'],domain,ass[0],ass[0]))
+        const29 = Type3Constraint('c meaning case 1',1,const29_lhs,'c',1,1)
+        constraint_set.add(const29)
+        
+        const30_lhs = FV(lambda pre,ass,domain:
+                Not(Reach(pre['n'],domain,ass[0],ass[0])))
+        const30 = Type3Constraint('c meaning case 2',1,const30_lhs,'c',1,0)
+        constraint_set.add(const30)        
+        #Fixed the bug that this caused - it stemmed from the handle method in Reach
+
+        for pointer in pointers:
+            const37_lhs = FV(lambda pre,ass,domain,pointer=pointer : 
+                             Or(Atom(pre[pointer][ass[0]]),Exists(domain,FV(lambda v1:
+                                And(Atom(pre[pointer][v1]),Reach(pre['n'],domain,v1,ass[0]))))))
+            const37 = Type3Constraint('r: '+pointer+' meaning case 1',1,const37_lhs,'r-'+pointer,1,1)
+            constraint_set.add(const37)
+
+            const38_lhs = FV(lambda pre,ass,domain,pointer=pointer : 
+                             Not(Or(Atom(pre[pointer][ass[0]]),Exists(domain,FV(lambda v1:
+                                And(Atom(pre[pointer][v1]),Reach(pre['n'],domain,v1,ass[0])))))))
+            const38 = Type3Constraint('r-'+pointer+' meaning case 2',1,const38_lhs,'r-'+pointer,1,0)
+            constraint_set.add(const38)
 
         return constraint_set
 

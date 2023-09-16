@@ -1,0 +1,25 @@
+x y a b d
+
+L0  y := new  L1
+L1  x := y    L2
+L2  assume TRUE  L3
+L2  assume TRUE  L6
+
+L3  a := new   L4
+L4  a.n := x   L5
+L5  x := a    L2
+
+L6  a := x   L7
+L7  b := x   L8
+
+L8  assume a != y  L9
+L9  b := a    L10
+L10 a := a.n  L8
+
+L8  assume a != b L11
+L11  d := new    L12
+L12  b.n := NULL L13
+L13  b.n := d    L14
+L14  d.n := a    L15
+L15  assert (LS x d)  L16
+L16  assert (LS d y)  L17

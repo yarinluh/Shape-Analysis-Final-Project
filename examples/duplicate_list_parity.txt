@@ -1,0 +1,24 @@
+a b d x y z
+
+L0  a := new  L1
+L1  b := a   L2
+
+L2  assume TRUE  L3
+L3  d := new   L4
+L4  d.n := b   L5
+L5  b := d    L2
+
+L2  assume TRUE  L6
+L6  d := b   L7
+L7  x := new   L8
+L8  y := x  L9
+
+L9  assume d != a  L10
+L10  z := new  L11
+L11  z.n := y  L12
+L12  y := z  L13
+L13  d := d.n  L9
+
+L9  assume d = a  L14
+L14  a.n := y     L15
+L15  assert (EVEN b x)  L16

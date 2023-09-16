@@ -1,0 +1,5 @@
+x y 
+
+L0  x := new  L1
+L1  y := new  L2
+L2  x := y.n  L3

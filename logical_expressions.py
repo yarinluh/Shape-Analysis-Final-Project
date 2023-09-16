@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import List,Callable
+from time import time 
     
 def cartesian_product(lst, k):
     #Thanks chatGPT
@@ -38,9 +39,9 @@ class TwoVal(Enum):
     
     def __repr__(self):
         if self == TwoVal.Zero:
-            return "0"
+            return "zero"
         if self == TwoVal.One:
-            return "1"
+            return "one"
         
 class ThreeVal(Enum):
     Zero = 0
@@ -82,11 +83,11 @@ class ThreeVal(Enum):
         
     def __repr__(self):
         if self == ThreeVal.Zero:
-            return "0"
+            return "zero"
         if self == ThreeVal.One:
-            return "1"
+            return "one"
         if self == ThreeVal.Half:
-            return "1/2"
+            return "half"
 
     def frombool(bool):
         if bool == 0:
@@ -169,29 +170,124 @@ class Atom(LogicalExpression):
         return "atomic"+self.logicvar.__repr__()
 
 class Reach(LogicalExpression):
+    #This is still not optimal - much better would be  calculate once the connected components and then use that
     #indv2 is reachable from indv1 along 'n' fields
-    def __init__(self,domain,indv1,indv2):
+    def __init__(self,edges,domain,indv1,indv2):
+        self.edges = edges #edges is supposed to be the value 'n' maps to in a predicate values dictionary
         self.domain = domain
         self.indv1 = indv1
         self.indv2 = indv2
 
-    def handle(self,pred,logic):
-        k = len(self.domain)
-        current_result = logic.Zero
-        for i in range(1,k):
-            formula = FV(lambda pred,ass: And(*[Atom(pred['n'][(ass[i-1],ass[i])]) for i in range(1,i+1)]))
-            possible_assignments = cartesian_product(self.domain,i+1)
-            for ass in possible_assignments:
-                if ass[0] == self.indv1 and ass[i] == self.indv2:
-                    subs = formula.substitute(pred, ass)
-                    res = subs.handle(logic)
-                    current_result = logic.Or([current_result, res])
-        return current_result           
+    def handle(self,logic):
+        start = self.indv1
+        dfs_result = self.dfs(logic,start)
+        return dfs_result[self.indv2]
+
+    def dfs(self,logic,indv):
+        #returns a dictionary mapping each individual to its reachability status from indv
+        reachability_status = {indv:logic.Zero for indv in self.domain}
+        adj_list = self.create_adjacency_list(logic)
+        worklist = set()
+
+        out_start_edges = adj_list[indv]
+        for pair in out_start_edges:
+            out_node = pair[0]
+            edge_value = pair[1]
+            reach_status = reachability_status[out_node]
+            
+            if reach_status == logic.Half and edge_value == logic.One:
+                worklist.add(out_node)
+                reachability_status[out_node] = edge_value
+            if reach_status == logic.Zero:
+                worklist.add(out_node)
+                reachability_status[out_node] = edge_value
+
+        while worklist:
+            worknode = worklist.pop()
+            reach_in = reachability_status[worknode]
+            outedges = adj_list[worknode]
+            for pair in outedges:
+                out_node = pair[0]
+                edge_value = pair[1]
+                reach_status = reachability_status[out_node]
+                new_pot_status = logic.And([edge_value,reach_in])
+                if reach_status == logic.Zero and new_pot_status != logic.Zero:
+                    reachability_status[out_node] = new_pot_status
+                    worklist.add(out_node)
+                if reach_status == logic.Half and new_pot_status == logic.One:
+                    reachability_status[out_node] = new_pot_status
+                    worklist.add(out_node)
+         
+        return reachability_status
+
+    def create_adjacency_list(self,logic):
+        edge_list = {indv:set() for indv in self.domain}
+        for pair in self.edges.keys():
+            value = self.edges[pair]
+            start = pair[0]
+            end = pair[1]
+            start_out_edges = edge_list[start]
+            if value != logic.Zero:
+                start_out_edges.add((end,value))
+        return edge_list
 
     def __repr__(self):
         return self.indv2+" is reach. from "+self.indv1+" by 'n' fields "
 
-    
+#THE FOLLOWING TWO ARE NOT USED AND NOT IMPLEMENENTED EFFICIENTLY CURRENTLY
+
+class ReachOdd(LogicalExpression):
+    #indv2 is reachable from indv1 along 'n' fields in even number of steps (odd number of nodes)
+    def __init__(self,edges,domain,indv1,indv2):
+        self.edges = edges #edges is supposed to be the value 'n' maps to in a predicate values dictionary
+        self.domain = domain
+        self.indv1 = indv1
+        self.indv2 = indv2
+
+    def handle(self,logic):
+        edges = self.edges
+        k = len(self.domain)
+        current_result = logic.Zero
+        for i in range(1,k):
+            formula = FV(lambda ass: And(*[Atom(edges[(ass[i-1],ass[i])]) for i in range(1,i+1)]))
+            if i%2 == 0:
+                possible_assignments = cartesian_product(self.domain,i+1)
+                for ass in possible_assignments:
+                    if ass[0] == self.indv1 and ass[i] == self.indv2:
+                        subs = formula.substitute(ass)
+                        res = subs.handle(logic)
+                        current_result = logic.Or([current_result, res])
+        return current_result           
+
+    def __repr__(self):
+        return self.indv2+" is reach. from "+self.indv1+" by 'n' fields with odd num. of nodes"
+
+class ReachEven(LogicalExpression):
+    #indv2 is reachable from indv1 along 'n' fields in odd number of steps (even number of nodes)
+    def __init__(self,edges,domain,indv1,indv2):
+        self.edges = edges #edges is supposed to be the value 'n' maps to in a predicate values dictionary
+        self.domain = domain
+        self.indv1 = indv1
+        self.indv2 = indv2
+
+    def handle(self,logic):
+        edges = self.edges
+        k = len(self.domain)
+        current_result = logic.Zero
+        for i in range(1,k):
+            formula = FV(lambda ass: And(*[Atom(edges[(ass[i-1],ass[i])]) for i in range(1,i+1)]))
+            if i%2 == 1:
+                possible_assignments = cartesian_product(self.domain,i+1)
+                for ass in possible_assignments:
+                    if ass[0] == self.indv1 and ass[i] == self.indv2:
+                        subs = formula.substitute(ass)
+                        res = subs.handle(logic)
+                        current_result = logic.Or([current_result, res])
+        return current_result           
+
+    def __repr__(self):
+        return self.indv2+" is reach. from "+self.indv1+" by 'n' fields with even num. of nodes"
+
 class FV(LogicalExpression):
     def __init__(self,function: Callable[...,LogicalExpression]):
         self.function = function 
@@ -223,8 +319,30 @@ def TC_example():
     n_values = {key:zero for key in keys}
     n_values[('a','b')] = half
     n_values[('b','c')] = one
-    pred = {'n':n_values}
 
-    reach_que = Reach(domain,'a','c')
-    print(reach_que.handle(pred,ThreeVal))
+    reach_que_odd = ReachOdd(n_values,domain,'a','c')
+    print(reach_que_odd.handle(ThreeVal))
 
+    reach_que_even = ReachEven(n_values,domain,'a','c')
+    print(reach_que_even.handle(ThreeVal))
+
+def Reach_DFS():
+    one = ThreeVal.One
+    half = ThreeVal.Half
+    zero = ThreeVal.Zero
+
+    domain = {'a','b','c'}
+    keys = cartesian_product(list(domain),2)
+    n_values = {key:zero for key in keys}
+    n_values[('a','b')] = one
+    n_values[('b','c')] = half
+    n_values[('c','a')] = one
+    n_values[('b','b')] = half
+
+    reach = Reach(n_values,domain,'a','c')
+    #print(reach.create_adjacency_list(ThreeVal))
+    print(reach.dfs(ThreeVal,'a'))
+
+    print(reach.handle(ThreeVal))
+
+Reach_DFS()
