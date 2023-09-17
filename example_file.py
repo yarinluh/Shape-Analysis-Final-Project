@@ -19,4 +19,4 @@ def run_example(address):
         draw_set_of_states(value,'output at location '+str(key))
     
 delete_png_files_in_state_figures()
-run_example('examples/duplicate_list.txt')
+run_example('examples/list_traversal.txt')

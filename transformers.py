@@ -57,6 +57,14 @@ class state_transformers:
                     post[rxodd][indv] = pre[ryodd][indv]
                     post[rxeven][indv] = pre[ryeven][indv]
 
+            #check_null_pointer
+            check_condition = Exists(individuals,FV(lambda v1: 
+                            Atom(pre[y_variable][v1])))
+            res = check_condition.handle(logic)
+            if res != logic.One:
+                print("possible null pointer error")
+                errors.null_pointer = True
+
             return state.change_indvs_or_values(individuals,post)
         
         if type == CommandType.C_Assign_Null: 
@@ -114,7 +122,7 @@ class state_transformers:
                             And(Atom(pre[y_variable][v1]),Atom(pre['n'][(v1,v2)]))))))
             res = check_condition.handle(logic)
             if res != logic.One:
-                print("possible null pointer error on state",state)
+                print("possible null pointer error")
                 errors.null_pointer = True
 
             return state.change_indvs_or_values(individuals,post)
@@ -183,6 +191,13 @@ class state_transformers:
                                     And(Atom(pre[rzodd][u]),Atom(pre[ryodd][indv]))
                                 )))))
                         post[rzeven][indv] = cond_even.handle(logic)
+
+            #check_null_pointer
+            check_condition = Exists(individuals,FV(lambda v1: Atom(pre[y_variable][v1])))
+            res = check_condition.handle(logic)
+            if res != logic.One:
+                print("possible null pointer error")
+                errors.null_pointer = True
 
             return state.change_indvs_or_values(individuals,post)
             
@@ -529,7 +544,7 @@ class state_transformers:
         check_condition = Exists(individuals,FV(lambda v: Atom(pre['c'][v])))
         res = check_condition.handle(logic)
         if res != logic.Zero:
-            print("possible cycle detected in state",state)
+            print("possible cycle detected")
             errors.cycle_detected = True
 
     def check_heap_shared(state,logic):
@@ -538,7 +553,7 @@ class state_transformers:
         check_condition = Exists(individuals,FV(lambda v1: Exists(individuals,FV(lambda v2: And(Atom(pre['is'][v1]),Atom(pre['is'][v2]),Atom(logic.frombool(v1!=v2)))))))
         res = check_condition.handle(logic)
         if res != logic.Zero:
-            print("possible more than 1 heap shared node in state",state)
+            print("possible more than 1 heap shared node")
             errors.more_than_1_heap_shared = True
 
 
@@ -617,7 +632,7 @@ class set_transformers:
                 assert_orc = command.command_parameters['ORC']
                 assert_result = state_transformers.evaluate_assert_on_state(state,assert_orc,ThreeVal)
                 if assert_result == False:
-                    print("assert: ",assert_orc,"may be violated by state: ",state)
+                    print("assert: ",assert_orc,"may be violated")
                     errors.assertion_fail = True
                 else:
                     outset.add(state)
